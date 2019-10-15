@@ -1,3 +1,4 @@
+```bash
 /Users/alexdarie/CLionProjects/PDS_week1/cmake-build-debug/PDS_week1
 Account 0: 24$
 Account 1: 8$
@@ -2563,3 +2564,4 @@ BENCHMARK:
 Running took 2499us.
 
 Process finished with exit code 0
+```
