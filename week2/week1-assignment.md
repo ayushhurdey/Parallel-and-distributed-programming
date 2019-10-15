@@ -4,11 +4,10 @@
 #include <thread>
 #include <mutex>
 #include <vector>
-#include <list>
 #include <ctime>
 #include <algorithm>
 
-#define THREAD_NUMBER 10
+#define THREAD_NUMBER 100
 #define ACCOUNT_NUMBER 10
 
 class TransBlock {
@@ -35,6 +34,7 @@ public:
     int id;
     unsigned int balance;
     int last_check;
+    int last_check_transaction_index;
     std::vector<TransBlock*> transactions;
     std::mutex m;
 
@@ -42,6 +42,7 @@ public:
         this->id = id;
         this->balance = balance;
         this->last_check = balance;
+        this->last_check_transaction_index = 0;
     }
 
     void send(unsigned int amount, Account* acc, int identifier) {
@@ -68,17 +69,7 @@ public:
         }
     }
 
-    unsigned int get_balance() {
-        return this->balance;
-    }
-
     std::vector<TransBlock*> get_transactions(std::chrono::steady_clock::time_point previous_to) {
-        std::vector<TransBlock*> trans;
-        for (auto &transaction : this->transactions) {
-            if(transaction->timestamp > previous_to) {
-                trans.push_back(transaction);
-            }
-        }
         return this->transactions;
     }
 };
@@ -90,19 +81,19 @@ bool transfer(Account* src, Account* dest, unsigned int amount, int identifier) 
         threshold--;
         src->m.lock();
         if(src->balance >= amount) {
-            src->send(amount, dest, identifier);
             src->balance -= amount;
+            src->send(amount, dest, identifier);
         }
         success = dest->m.try_lock();
         if(success) {
-            dest->received(amount, src, identifier);
             dest->balance += amount;
+            dest->received(amount, src, identifier);
             dest->m.unlock();
             src->m.unlock();
             return true;
         } else {
-            dest->received(amount, src, identifier);
             src->balance += amount;
+            dest->received(amount, src, identifier);
             src->drop(src, dest, identifier);
             src->m.unlock();
             std::this_thread::sleep_for(timespan);
@@ -121,11 +112,9 @@ void display_transaction(TransBlock* transaction, std::chrono::steady_clock::tim
 }
 
 bool checker(std::vector<Account*> accounts, int identifier) {
-    bool balance_inconsistencies = false;
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    std::cout << "At the moment the checker run: " << std::endl;
     std::vector<std::vector<TransBlock*>> books;
-    std::vector<unsigned int> balances;
+    std::vector<int> balances;
     for(int iAcc = 0; iAcc < ACCOUNT_NUMBER; iAcc++) {
         accounts[iAcc]->m.lock();
         books.push_back(accounts[iAcc]->get_transactions(now));
@@ -138,7 +127,7 @@ bool checker(std::vector<Account*> accounts, int identifier) {
         std::cout << "balance: " << balances[iAcc] << "$" << std::endl;
     }
 
-    std::cout << std::endl << "CHECKING: \n";
+    std::cout << std::endl << "CHECKING... \n";
     std::vector<int> log_inconsistent_accounts;
     for(int iAcc = 0; iAcc < ACCOUNT_NUMBER; iAcc++) {
         for(auto &transaction : books[iAcc]) {
@@ -151,21 +140,32 @@ bool checker(std::vector<Account*> accounts, int identifier) {
             }
 
             if (!log_inconsistency and !books[transaction->dest_id].empty()) {
-                std::cout << "destination log inconsistency @transaction: " << transaction->id << ": operations not yet logged. "
-                          << std::endl;
+//                std::cout << "destination log inconsistency @transaction: " << transaction->id
+//                    << ": operations not yet logged. " << std::endl;
                 log_inconsistent_accounts.push_back(transaction->src_id);
                 log_inconsistent_accounts.push_back(transaction->dest_id);
             }
+        }
+    }
 
-            if(!transaction->failure) {
-                accounts[iAcc]->last_check += transaction->amount;
+    for(int iAcc = 0; iAcc < ACCOUNT_NUMBER; iAcc++) {
+        int begin = accounts[iAcc]->last_check_transaction_index;
+        for (int i = begin; i < books[iAcc].size(); i++) {
+            if (!books[iAcc][i]->failure) {
+                accounts[iAcc]->last_check += books[iAcc][i]->amount;
             }
         }
-        if(accounts[iAcc]->last_check != balances[iAcc]) {
+
+        accounts[iAcc]->last_check_transaction_index = books[iAcc].size();
+
+        if (accounts[iAcc]->last_check != balances[iAcc] and
+            std::find(std::begin(log_inconsistent_accounts), std::end(log_inconsistent_accounts), iAcc) ==
+            std::end(log_inconsistent_accounts)) {
             std::cout << "Account " << iAcc << " invalid balance." << std::endl;
             return false;
         }
     }
+
     return true;
 }
 
@@ -192,7 +192,7 @@ int main()
         if(i < 0) i = -i;
         if(j < 0) j = -j;
 
-        threads.push_back(new std::thread(&transfer, accounts[i], accounts[j], rand() % 10, iThrd));
+        threads.push_back(new std::thread(&transfer, accounts[i], accounts[j], rand() % 9 + 1, iThrd));
 
         if(iThrd % 10 == 0) {
             threads.push_back(new std::thread(checker, accounts, iThrd));
