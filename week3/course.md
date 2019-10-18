@@ -15,6 +15,6 @@ cv.wait() [5] [6] ... [infinity]
 use(data)
 ```
 
-See the image uploaded in this folder.
-![]()
+![](https://github.com/alexdarie/Parallel-and-distributed-systems/blob/master/week3/MVIMG_20191018_092732.jpg)
+
 Replace if by while. Also replace while with `cv.wait(l, [&available](){return available;}); use(data);`
