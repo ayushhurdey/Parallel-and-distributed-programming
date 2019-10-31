@@ -21,13 +21,23 @@ public:
         stop();
     }
 
-    void enqueue(Task task) {
+    template<class T>
+    auto enqueue(T task) -> std::future<decltype(task())> {
+        // container for an abstract functor
+        auto wrapper = std::make_shared<std::packaged_task<decltype(task()) ()>>(std::move(task));
+
         // scope for the mutex
         {
             std::unique_lock<std::mutex> lock {mEventMutex};
-            mTasks.emplace(std::move(task));
+            mTasks.emplace([=] {
+                // call through the shared pointer
+                (*wrapper)();
+            });
         }
         mEventVar.notify_all();
+
+        // the future contained by the packaged task will contain the result of the task
+        return wrapper->get_future();
     }
 private:
     std::vector<std::thread> mThreads;
@@ -43,12 +53,12 @@ private:
                     Task task;
 
                     // Critical section scope:
-                    // Ee don't want to keep the mutex lock while the task is executing
+                    // We don't want to keep the mutex lock while the task is executing
                     // because the task might take, well.. long enough, and the mutex might be
                     // locked for a long period of time.
                     {
                         std::unique_lock<std::mutex> lock{mEventMutex};
-                      
+
                         // We need this guard (the predicate) because a thread might wake up spontaneously.
                         mEventVar.wait(lock, [=] { return mStopping || !mTasks.empty(); });
 
@@ -80,9 +90,11 @@ private:
             mStopping = true;
         }
         mEventVar.notify_all();
+        std::cout << "joining treads.." << std::endl;
         for(auto &thread : mThreads) {
             thread.join();
         }
+        std::cout << "stopped." << std::endl;
     }
 };
 
@@ -288,8 +300,139 @@ void target1() {
     row_matrices_sum(&big_query, &big_query);
 }
 
+// TO DO:
+// Row sum.
+void tp_row_matrices_sum(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
+    int n = (*matrix1).size();
+    std::vector<std::future<void>> future;
+
+    // start time for our study case
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    for(unsigned long iRow = 0; iRow < n; iRow++) {
+        future.push_back(std::async(row_sum, &(*matrix1)[iRow], &(*matrix2)[iRow], iRow));
+    }
+    for(auto & f : future) {
+        f.wait();
+    }
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "\n n threads computing the sum on each row took: "
+              << duration
+              << "us, "
+              << duration / 1000
+              << "ms, "
+              << duration / 1000000
+              << "s.\n";
+}
+// ~Row sum.
+
+// Element by element sum.
+void tp_elem_matrices_sum(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
+    int n = (*matrix1).size(), iThread = 0;
+    std::vector<std::future<void>> future;
+
+    // start time for our study case
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    for(unsigned long iRow = 0; iRow < n; iRow++) {
+        for(unsigned long iCol = 0; iCol < n; iCol++) {
+            future.push_back(std::async(elem_sum, &(*matrix1)[iRow][iCol], &(*matrix2)[iRow][iCol], iThread++));
+        }
+    }
+    for(auto & f : future) {
+        f.wait();
+    }
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "\n n x m threads computing the sum on each row took: "
+              << duration
+              << "us, "
+              << duration / 1000
+              << "ms, "
+              << duration / 1000000
+              << "s.\n";
+}
+// ~Element by element sum.
+
+// Multiply one row with the other matrix algorithm.
+std::vector<std::vector<int>> tp_row_col_matrices_product(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
+    int n = (*matrix1).size();
+    std::vector<std::vector<int>> result(n);
+    std::vector<std::future<int>> future;
+
+    // start time for our study case
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    for(unsigned int iRow = 0; iRow < n; iRow++) {
+        future.push_back(std::async (row_prod, &result[iRow], &(*matrix1)[iRow], matrix2, iRow));
+    }
+    for(auto & f : future) {
+        int row = f.get();
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        std::cout << "\nrow "
+                  << row
+                  << " computer after: "
+                  << duration
+                  << "us, "
+                  << duration / 1000
+                  << "ms, "
+                  << duration / 1000000
+                  << "s.\n";
+    }
+    return result;
+}
+// ~Multiply one row with the other matrix algorithm.
+// ~ TO DO
+
+// Classic algorithm matrix product.
+std::vector<std::vector<int>> tp_matrices_product(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
+    int n = (*matrix1).size();
+    std::vector<std::vector<int>> result(n);
+
+    // start time for our study case
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    ThreadPool tp {1};
+    tp.enqueue(
+            [&result, matrix1, matrix2] () {
+                 matrix_product(&result, matrix1, matrix2);
+            }
+    );
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "\n1 thread in TP running the classic matrix product took: "
+              << duration
+              << "us, "
+              << duration / 1000
+              << "ms, "
+              << duration / 1000000
+              << "s.\n";
+    std::cout << "The results regarding matrix multiplication were already proved to be valid in week 3 assign. " << std::endl;
+
+    return result;
+}
+// ~ Classic algorithm matrix product.
+
 void target2() {
-    ThreadPool pool{36};
+
+    // Due to the circumstances, for our purposes a matrix of 1000 x 1000 is enough to analyse
+    // how future, async and thread pools are working.
+    std::vector<std::vector<int>> big_query;
+    for(int i=0; i<1000; i++) {
+        std::vector<int> row;
+        row.reserve(1000);
+        for(int j=0; j<1000; j++) {
+            row.push_back(j);
+        }
+        big_query.push_back(row);
+    }
+
+    tp_matrices_product(&big_query, &big_query);
 }
 
 int main() {
