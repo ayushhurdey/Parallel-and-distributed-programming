@@ -1,37 +1,54 @@
-// condition_variable example
-#include <iostream>           // std::cout
-#include <thread>             // std::thread
-#include <mutex>              // std::mutex, std::unique_lock
-#include <condition_variable> // std::condition_variable
-
-std::mutex mtx;
+#include <iostream>
+#include <string>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+ 
+std::mutex m;
 std::condition_variable cv;
+std::string data;
 bool ready = false;
-
-void print_id (int id) {
-  std::unique_lock<std::mutex> lck(mtx);
-  while (!ready) cv.wait(lck);
-  // ...
-  std::cout << "thread " << id << '\n';
-}
-
-void go() {
-  std::unique_lock<std::mutex> lck(mtx);
-  ready = true;
-  cv.notify_all();
-}
-
-int main ()
+bool processed = false;
+ 
+void worker_thread()
 {
-  std::thread threads[10];
-  // spawn 10 threads:
-  for (int i=0; i<10; ++i)
-    threads[i] = std::thread(print_id,i);
-
-  std::cout << "10 threads ready to race...\n";
-  go();                       // go!
-
-  for (auto& th : threads) th.join();
-
-  return 0;
+    // Wait until main() sends data
+    std::unique_lock<std::mutex> lk(m);
+    cv.wait(lk, []{return ready;});
+ 
+    // after the wait, we own the lock.
+    std::cout << "Worker thread is processing data\n";
+    data += " after processing";
+ 
+    // Send data back to main()
+    processed = true;
+    std::cout << "Worker thread signals data processing completed\n";
+ 
+    // Manual unlocking is done before notifying, to avoid waking up
+    // the waiting thread only to block again (see notify_one for details)
+    lk.unlock();
+    cv.notify_one();
+}
+ 
+int main()
+{
+    std::thread worker(worker_thread);
+ 
+    data = "Example data";
+    // send data to the worker thread
+    {
+        std::lock_guard<std::mutex> lk(m);
+        ready = true;
+        std::cout << "main() signals data ready for processing\n";
+    }
+    cv.notify_one();
+ 
+    // wait for the worker
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, []{return processed;});
+    }
+    std::cout << "Back in main(), data = " << data << '\n';
+ 
+    worker.join();
 }
