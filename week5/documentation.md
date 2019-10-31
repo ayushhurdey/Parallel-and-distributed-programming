@@ -19,4 +19,10 @@ When the pool is handed a Task, it takes a thread from the container (or waits f
 > - vector of threads
 > - vector of futures (run all of them and wait, .get() is not required because I am editing a memory location, so there is no need to .get() the returned value, just .wait() them to finish)
 
-
+> To do:
+> Compare the performance of the various mechanisms.
+> 
+> Write a documentation containing:
+> 
+> for each synchronization primitive used, the rules involving it (for a mutex, what invariants it protects; for a producer-> consumer synchronization device, when is it triggered);
+> what tests have you done, on what hardware platform, for what size of the data, and what was the time consumed.
