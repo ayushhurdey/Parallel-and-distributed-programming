@@ -60,10 +60,11 @@ private:
                         std::unique_lock<std::mutex> lock{mEventMutex};
 
                         // We need this guard (the predicate) because a thread might wake up spontaneously.
-                        mEventVar.wait(lock, [=] { return mStopping || !mTasks.empty(); });
+                        mEventVar.wait(lock, [=] { return mStopping || !mTasks.empty(); }); // if I remove !mTasks.empty(); it ends immediately [AND]
 
                         // only if the tasks are also complete
-                        if (mStopping && mTasks.empty()) {
+                        if (mStopping && mTasks.empty()) {       // [AND] if I remove mTasks.empty() it ends immediately
+//                            std::cout << "break" << std::endl;
                             break;
                         }
 
@@ -300,7 +301,7 @@ void target1() {
     row_matrices_sum(&big_query, &big_query);
 }
 
-// TO DO:
+// TO DO if nec.
 // Row sum.
 void tp_row_matrices_sum(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
     int n = (*matrix1).size();
@@ -356,37 +357,37 @@ void tp_elem_matrices_sum(std::vector<std::vector<int>>* matrix1, std::vector<st
               << "s.\n";
 }
 // ~Element by element sum.
+// ~ TO DO
 
 // Multiply one row with the other matrix algorithm.
 std::vector<std::vector<int>> tp_row_col_matrices_product(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
     int n = (*matrix1).size();
     std::vector<std::vector<int>> result(n);
-    std::vector<std::future<int>> future;
+    ThreadPool tp{static_cast<size_t>(n)};
 
     // start time for our study case
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
     for(unsigned int iRow = 0; iRow < n; iRow++) {
-        future.push_back(std::async (row_prod, &result[iRow], &(*matrix1)[iRow], matrix2, iRow));
+        tp.enqueue(
+                [&result, matrix1, matrix2, iRow] () {
+                    row_prod(&result[iRow], &(*matrix1)[iRow], matrix2, iRow);
+                });
     }
-    for(auto & f : future) {
-        int row = f.get();
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        std::cout << "\nrow "
-                  << row
-                  << " computer after: "
-                  << duration
-                  << "us, "
-                  << duration / 1000
-                  << "ms, "
-                  << duration / 1000000
-                  << "s.\n";
-    }
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "\nn threads in TP running the 'tp_row_col_matrices_product' took:: "
+              << duration
+              << "us, "
+              << duration / 1000
+              << "ms, "
+              << duration / 1000000
+              << "s.\n";
+
     return result;
 }
 // ~Multiply one row with the other matrix algorithm.
-// ~ TO DO
 
 // Classic algorithm matrix product.
 std::vector<std::vector<int>> tp_matrices_product(std::vector<std::vector<int>>* matrix1, std::vector<std::vector<int>>* matrix2) {
@@ -397,6 +398,8 @@ std::vector<std::vector<int>> tp_matrices_product(std::vector<std::vector<int>>*
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
     ThreadPool tp {1};
+
+    // std::future<void> ft =
     tp.enqueue(
             [&result, matrix1, matrix2] () {
                  matrix_product(&result, matrix1, matrix2);
@@ -432,12 +435,38 @@ void target2() {
         big_query.push_back(row);
     }
 
+    std::vector<std::vector<int>>
+            result,
+            matrix1{
+            {1, 2, 3},
+            {4, 5, 6},
+            {7, 8, 9}
+    },
+            matrix2{
+            {2, 0, 0},
+            {0, 2, 0},
+            {0, 0, 2}
+    },
+            matrix3{
+            {1, 2, 3},
+            {1, 3, 4},
+            {2, 2, 2}
+    },
+            matrix4{
+            {1, 7},
+            {8, 9},
+            {0, 0}
+    };
+
     tp_matrices_product(&big_query, &big_query);
+
+    std::vector<std::vector<int>> m;
+    m = tp_row_col_matrices_product(&big_query, &big_query);
+    //    display_matrix(m);
 }
 
 int main() {
-
-//    target1();
+    target1();
     target2();
     return 0;
 }
