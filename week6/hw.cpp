@@ -89,8 +89,6 @@ Matrix* product(Matrix* M, Matrix* N, Matrix* Q) {
            N_col_size = N->get_cols(),
            Q_col_size = Q->get_cols();
 
-    std::cout << M_row_size << ", " << M_col_size << ", " << N_row_size << ", " << N_col_size << ", " << Q_col_size << std::endl;
-
     std::vector<std::mutex*> mxs;
     std::vector<std::condition_variable*> cvs;
     std::vector<bool> ready_status;
@@ -113,12 +111,14 @@ Matrix* product(Matrix* M, Matrix* N, Matrix* Q) {
     for(size_t i = 0; i < M_row_size; i++) {
 
         // Start a worker thread waiting for 'ready to go' status.
-        workers.push_back(new std::thread(worker_thread, i, &mxs, &cvs, &ready_status, &processed, result, partial_result, Q));
+        workers.push_back(new std::thread(worker_thread, i, &mxs, &cvs, &ready_status, 
+                                          &processed, result, partial_result, Q));
 
         // isolate this block on a thread
-        boss_threads.push_back(new std::thread([M, N, i, N_col_size, M_row_size, partial_result, &ready_status, &cvs, &mxs, &processed] {
+        boss_threads.push_back(new std::thread([M, N, i, N_col_size, M_row_size, partial_result, 
+                                                &ready_status, &cvs, &mxs, &processed] {
             int sum;
-
+            
             for (size_t k = 0; k < N_col_size; k++) {
                 sum = 0;
                 for (size_t j = 0; j < N_col_size; j++) {
