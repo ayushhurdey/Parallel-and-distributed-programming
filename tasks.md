@@ -1,0 +1,4 @@
+ - before: 2p bonus
+ - karatsuba_polynomial_multiplication: DL 8 -1p
+ - http: DL 9 
+ - sums of the first k numbers: DL 9 
