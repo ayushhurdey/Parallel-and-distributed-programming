@@ -1,6 +1,7 @@
 ```python
 '''
-Write a parallel program that computes the sum of all elements in a matrix using MPI. It shall use a binary tree for computing the sum
+Write a parallel program that computes the sum of all elements in a matrix using MPI.
+It shall use a binary tree for computing the sum
 '''
 from mpi4py import MPI
 from copy import deepcopy
