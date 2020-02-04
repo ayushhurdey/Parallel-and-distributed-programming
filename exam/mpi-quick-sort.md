@@ -1,3 +1,4 @@
+```py
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -39,3 +40,4 @@ else:
         comm.send(half1, dest=rank//2)
     else:
         comm.send(arr, dest=rank//2)
+```
