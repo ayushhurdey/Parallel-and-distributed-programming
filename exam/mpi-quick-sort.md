@@ -1,3 +1,8 @@
+Run it with the closest power of two greater than the number of elements you have in the vector.
+```bash
+$mpiexec -n 8 python3 mpi-quick-sort.py 
+```
+
 ```py
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
